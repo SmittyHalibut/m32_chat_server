@@ -1,10 +1,12 @@
-#!/usr/local/bin/python2.7
+#!/usr/bin/python2.7 -u
 #
 # https://github.com/sp9wpn/m32_chat_server
 #
 import socket
 import time
+import hashlib
 from math import ceil
+from datetime import datetime
 
 SERVER_IP = "0.0.0.0"
 UDP_PORT = 7373
@@ -12,7 +14,6 @@ CLIENT_TIMEOUT = 300
 MAX_CLIENTS = 10
 KEEPALIVE = 10
 DEBUG = 0
-
 serversock = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
 serversock.bind((SERVER_IP, UDP_PORT))
 serversock.settimeout(KEEPALIVE)
@@ -39,6 +40,31 @@ def broadcast(data,client):
 
 def str2hex(str):
   return ":".join("{:02x}".format(ord(c)) for c in str)
+
+def log_message(data, client):
+    speed = str(ord(data[1]) >> 2)
+    client_hash = hashlib.sha256()
+    client_hash.update(client)
+    client_str = "-".join("{:02x}".format(ord(c)) for c in client_hash.digest()[0:4]) 
+    print(datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S UTC") + " Client: " + client_str + ", " + speed + " wpm: " + demopp(data) + "<br/>")
+
+def demopp(data):
+    string = ""
+    for b in stripheader(data):
+        b = ord(b)
+        for foo in range(0, 4):
+            symbol = (b & 0xC0) >> 6
+            b = (b << 2) & 0xFF
+            if symbol == 0x01:
+                string = string + "."
+            elif symbol == 0x02:
+                string = string + "-"
+            elif symbol == 0x00:
+                string = string + " "
+            else:
+                string = string + "   "
+    return string.strip()
+
 
 def mopp(speed,str):
   global serial
@@ -106,6 +132,7 @@ while KeyboardInterrupt:
     debug ("\nReceived %s from %s" % (str2hex(data),client))
 
     speed = ord(data[1]) >> 2
+    log_message(data, client)
     if client in receivers:
       if stripheader(data) == stripheader(mopp(20,':bye')):
         serversock.sendto(mopp(speed,':bye'), addr)
@@ -115,15 +142,12 @@ while KeyboardInterrupt:
         broadcast (data, client)
         receivers[client] = time.time()
     else:
-      if stripheader(data) == stripheader(mopp(20,'hi')):
-        if (len(receivers) < MAX_CLIENTS):
-          receivers[client] = time.time()
-          welcome(client, speed)
-        else:
-          reject(client, speed)
-          debug ("ERR: maximum clients reached")
+      if (len(receivers) < MAX_CLIENTS):
+        receivers[client] = time.time()
+        welcome(client, speed)
       else:
-        debug ("-unknown client, ignoring-")
+        reject(client, speed)
+        debug ("ERR: maximum clients reached")
 
   except socket.timeout:
     # Send UDP keepalives
